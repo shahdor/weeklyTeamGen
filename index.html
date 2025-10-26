@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team Generator ⚽</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Style for the drop zones */
+        .drop-zone {
+            min-height: 200px;
+            transition: background-color 0.2s ease;
+        }
+        /* Style for a card being dragged */
+        .dragging {
+            opacity: 0.5;
+            transform: rotate(3deg);
+        }
+        /* Style for a drop zone being dragged over */
+        .drag-over {
+            background-color: #ebf8ff; /* Tailwind's blue-100 */
+            border-style: dashed;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+        <header class="mb-8">
+            <h1 class="text-4xl font-bold text-center text-blue-700">Team Generator ⚽</h1>
+            <p class="text-center text-lg text-gray-600 mt-2">Add players, sort them by position, and generate balanced teams.</p>
+        </header>
+
+        <!-- Player Input Section -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+            <label for="player-names" class="block text-lg font-medium text-gray-700 mb-2">Enter Player Names (comma-separated)</label>
+            <textarea id="player-names" rows="4" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="e.g. Alex, Jordan, Sam, Taylor, Morgan..."></textarea>
+            <button id="load-roster-btn" class="mt-4 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow hover:bg-blue-700 transition duration-200">Load Roster</button>
+        </div>
+
+        <!-- Feedback Message Box -->
+        <div id="feedback-message" class="hidden p-4 rounded-lg mb-6 text-center font-medium"></div>
+
+        <!-- Sorting Area -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            
+            <!-- Roster Column -->
+            <div class="bg-gray-100 p-4 rounded-lg shadow-inner">
+                <h2 class="text-xl font-semibold text-center text-gray-700 mb-4">Roster</h2>
+                <div id="roster-list" class="drop-zone bg-gray-200 p-3 rounded-lg border-2 border-gray-300">
+                    <!-- Player cards will be added here -->
+                </div>
+            </div>
+
+            <!-- Defender Column -->
+            <div class="bg-green-50 p-4 rounded-lg shadow-inner">
+                <h2 class="text-xl font-semibold text-center text-green-800 mb-4">Defenders</h2>
+                <div id="defender-list" class="drop-zone bg-green-100 p-3 rounded-lg border-2 border-green-200">
+                    <!-- Player cards will be added here -->
+                </div>
+            </div>
+
+            <!-- Midfielder Column -->
+            <div class="bg-yellow-50 p-4 rounded-lg shadow-inner">
+                <h2 class="text-xl font-semibold text-center text-yellow-800 mb-4">Midfielders</h2>
+                <div id="midfielder-list" class="drop-zone bg-yellow-100 p-3 rounded-lg border-2 border-yellow-200">
+                    <!-- Player cards will be added here -->
+                </div>
+            </div>
+
+            <!-- Attacker Column -->
+            <div class="bg-red-50 p-4 rounded-lg shadow-inner">
+                <h2 class="text-xl font-semibold text-center text-red-800 mb-4">Attackers</h2>
+                <div id="attacker-list" class="drop-zone bg-red-100 p-3 rounded-lg border-2 border-red-200">
+                    <!-- Player cards will be added here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Team Generation Section -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <div>
+                <label for="num-teams" class="text-lg font-medium text-gray-700 mr-2">Number of Teams:</label>
+                <input type="number" id="num-teams" value="2" min="2" class="w-20 p-2 border border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500">
+            </div>
+            <button id="generate-btn" class="px-8 py-3 bg-green-600 text-white font-bold rounded-lg shadow hover:bg-green-700 transition duration-200 disabled:bg-gray-400 disabled:cursor-not-allowed" disabled>
+                Generate Teams
+            </button>
+        </div>
+
+        <!-- Generated Teams Output -->
+        <div id="teams-output" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Generated teams will be displayed here -->
+        </div>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const loadRosterBtn = document.getElementById('load-roster-btn');
+            const generateBtn = document.getElementById('generate-btn');
+            const rosterList = document.getElementById('roster-list');
+            const dropZones = document.querySelectorAll('.drop-zone');
+
+            let draggingCard = null;
+
+            // --- 1. Load Roster ---
+            loadRosterBtn.addEventListener('click', () => {
+                const playerNamesInput = document.getElementById('player-names');
+                const names = playerNamesInput.value.split(',')
+                    .map(name => name.trim())
+                    .filter(name => name.length > 0);
+
+                if (names.length === 0) {
+                    showFeedback('Please enter at least one player name.', 'error');
+                    return;
+                }
+
+                // Clear existing lists before adding new ones
+                document.querySelectorAll('.drop-zone').forEach(zone => zone.innerHTML = '');
+
+                names.forEach((name, index) => {
+                    const card = createPlayerCard(name, index);
+                    rosterList.appendChild(card);
+                });
+
+                playerNamesInput.value = ''; // Clear input
+                checkButtonState();
+                showFeedback(`Loaded ${names.length} players into the roster.`, 'success');
+            });
+
+            // --- 2. Create Player Card ---
+            function createPlayerCard(name, index) {
+                const card = document.createElement('div');
+                card.id = `player-${Date.now()}-${index}`;
+                card.className = 'player-card bg-white p-3 rounded-lg shadow cursor-move my-2 text-gray-800 font-medium';
+                card.draggable = true;
+                card.textContent = name;
+
+                card.addEventListener('dragstart', handleDragStart);
+                card.addEventListener('dragend', handleDragEnd);
+                return card;
+            }
+
+            // --- 3. Drag and Drop Handlers ---
+            function handleDragStart(e) {
+                draggingCard = this;
+                e.dataTransfer.setData('text/plain', this.id);
+                // Use setTimeout to allow the browser to register the drag
+                setTimeout(() => {
+                    this.classList.add('dragging');
+                }, 0);
+            }
+
+            function handleDragEnd(e) {
+                this.classList.remove('dragging');
+                draggingCard = null;
+                checkButtonState();
+            }
+
+            dropZones.forEach(zone => {
+                zone.addEventListener('dragover', handleDragOver);
+                zone.addEventListener('dragleave', handleDragLeave);
+                zone.addEventListener('drop', handleDrop);
+            });
+
+            function handleDragOver(e) {
+                e.preventDefault(); // Necessary to allow dropping
+                if (this !== draggingCard.parentNode) {
+                    this.classList.add('drag-over');
+                }
+            }
+
+            function handleDragLeave(e) {
+                this.classList.remove('drag-over');
+            }
+
+            function handleDrop(e) {
+                e.preventDefault();
+                this.classList.remove('drag-over');
+                
+                if (draggingCard) {
+                    this.appendChild(draggingCard);
+                }
+            }
+
+            // --- 4. Check Button State ---
+            function checkButtonState() {
+                const rosterIsEmpty = rosterList.children.length === 0;
+                const categoriesHavePlayers = 
+                    document.getElementById('defender-list').children.length > 0 ||
+                    document.getElementById('midfielder-list').children.length > 0 ||
+                    document.getElementById('attacker-list').children.length > 0;
+
+                // Enable button only if roster is empty AND at least one player is in a category
+                generateBtn.disabled = !(rosterIsEmpty && categoriesHavePlayers);
+            }
+
+            // --- 5. Generate Teams ---
+            generateBtn.addEventListener('click', handleGenerateTeams);
+
+            function handleGenerateTeams() {
+                const numTeamsInput = document.getElementById('num-teams');
+                const numTeams = parseInt(numTeamsInput.value, 10);
+
+                if (isNaN(numTeams) || numTeams < 2) {
+                    showFeedback('Please enter a valid number of teams (at least 2).', 'error');
+                    return;
+                }
+
+                const getPlayers = (listId) => Array.from(document.getElementById(listId).children).map(card => card.textContent);
+                
+                const defenders = getPlayers('defender-list');
+                const midfielders = getPlayers('midfielder-list');
+                const attackers = getPlayers('attacker-list');
+
+                const allPlayersCount = defenders.length + midfielders.length + attackers.length;
+                if (numTeams > allPlayersCount) {
+                    showFeedback('Cannot create more teams than available players.', 'error');
+                    return;
+                }
+
+                // Distribute each position group using a "snake" draft
+                const teamDefenders = distributePlayers(defenders, numTeams);
+                const teamMidfielders = distributePlayers(midfielders, numTeams);
+                const teamAttackers = distributePlayers(attackers, numTeams);
+
+                // Combine into final teams
+                const finalTeams = Array.from({ length: numTeams }, (_, i) => ({
+                    team: i + 1,
+                    defenders: teamDefenders[i],
+                    midfielders: teamMidfielders[i],
+                    attackers: teamAttackers[i],
+                }));
+
+                displayTeams(finalTeams);
+            }
+
+            /**
+             * Shuffles an array in place.
+             * @param {Array} array The array to shuffle.
+             * @returns {Array} The shuffled array.
+             */
+            function shuffle(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+                return array;
+            }
+
+            /**
+             * Distributes players into teams using a snake draft for balance.
+             * @param {Array<string>} players - Array of player names.
+             * @param {number} numTeams - Number of teams.
+             * @returns {Array<Array<string>>} A 2D array where each inner array is a team's players.
+             */
+            function distributePlayers(players, numTeams) {
+                const teams = Array.from({ length: numTeams }, () => []);
+                let teamIndex = 0;
+                let direction = 1; // 1 for forward, -1 for backward
+                const shuffledPlayers = shuffle([...players]); // Shuffle a copy
+
+                shuffledPlayers.forEach(player => {
+                    teams[teamIndex].push(player);
+                    teamIndex += direction;
+
+                    // Bounce logic for snake draft
+                    if (teamIndex === numTeams) {
+                        teamIndex = numTeams - 1;
+                        direction = -1;
+                    } else if (teamIndex < 0) {
+                        teamIndex = 0;
+                        direction = 1;
+                    }
+                });
+                return teams;
+            }
+
+            // --- 6. Display Teams ---
+            function displayTeams(teams) {
+                const container = document.getElementById('teams-output');
+                container.innerHTML = ''; // Clear previous results
+
+                if (teams.length === 0) return;
+                
+                showFeedback(`Successfully generated ${teams.length} teams!`, 'success');
+
+                teams.forEach(team => {
+                    const teamCard = document.createElement('div');
+                    teamCard.className = 'bg-white p-6 rounded-lg shadow-lg mb-4';
+                    
+                    let html = `<h3 class="text-2xl font-bold text-blue-700 mb-4">Team ${team.team}</h3>`;
+                    
+                    const totalPlayers = team.defenders.length + team.midfielders.length + team.attackers.length;
+                    html += `<p class="text-sm text-gray-600 mb-3 font-semibold">Total Players: ${totalPlayers}</p>`;
+                    
+                    if (team.defenders.length > 0) {
+                        html += `<div class="mb-2"><strong class="text-green-700">Defenders:</strong> ${team.defenders.join(', ')}</div>`;
+                    }
+                    if (team.midfielders.length > 0) {
+                        html += `<div class="mb-2"><strong class="text-yellow-700">Midfielders:</strong> ${team.midfielders.join(', ')}</div>`;
+                    }
+                    if (team.attackers.length > 0) {
+                        html += `<div class="mb-2"><strong class="text-red-700">Attackers:</strong> ${team.attackers.join(', ')}</div>`;
+                    }
+
+                    teamCard.innerHTML = html;
+                    container.appendChild(teamCard);
+                });
+            }
+
+            // --- 7. Feedback Utility ---
+            function showFeedback(message, type = 'success') {
+                const feedbackBox = document.getElementById('feedback-message');
+                feedbackBox.textContent = message;
+                
+                // Reset classes
+                feedbackBox.classList.remove('hidden', 'bg-green-100', 'text-green-700', 'bg-red-100', 'text-red-700');
+                
+                if (type === 'error') {
+                    feedbackBox.classList.add('bg-red-100', 'text-red-700');
+                } else {
+                    feedbackBox.classList.add('bg-green-100', 'text-green-700');
+                }
+                
+                // Hide after 3 seconds
+                setTimeout(() => {
+                    feedbackBox.classList.add('hidden');
+                }, 3000);
+            }
+            
+            // Initial check
+            checkButtonState();
+        });
+    </script>
+</body>
+</html>
+
